@@ -36,3 +36,6 @@
 [3]: https://docs.github.com/en/rest/branches/branches?utm_source=chatgpt.com "REST API endpoints for branches"
 
 [4]: https://docs.github.com/en/rest/issues/issues?utm_source=chatgpt.com "REST API endpoints for issues"
+
+## Links
+### GitHub API
