@@ -17,9 +17,9 @@ async def get_repository(request: RepositoryRequest):
        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/preview", response_model=RepositoryPreviewResponse)
-def preview_repository(request: RepositoryRequest) -> RepositoryPreviewResponse:
+async def preview_repository(request: RepositoryRequest) -> RepositoryPreviewResponse:
     try:
-        return get_repo_metadata(request.url)
+        return await get_repo_metadata(request.url)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             raise HTTPException(status_code=404, detail="Repository not found.") from exc

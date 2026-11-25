@@ -5,9 +5,19 @@ class RepositoryRequest(BaseModel):
 
 
 class RepositoryPreviewResponse(RepositoryRequest):
-    name: str = Field(..., example="ols-fs-013-music-streaming-explorer")
-    owner: str = Field(..., example="App-Akademie-Students")
-    language: dict | None = Field(..., example={"Python": 100})#TODO
-    readme: str | None = Field(..., example="This is the README content.")
+    owner: str
+    repo: str
+    description: str | None
+    languages: dict[str, int]
+    readme: str | None
+    #project_files: ProjectFileScan
+
+
+
+
+class ProjectFile(BaseModel):
+    path: str
+    content: str
 class ProjectFileScan(BaseModel):
-    files: list[str] = Field(..., example=["package.json", "requirements.txt"])# FIXME
+    files: list[ProjectFile] = Field(..., example=[{"path": "package.json", "content": "{}"}, {"path": "requirements.txt", "content": "flask==2.0.1"}])
+    incomplete: bool = Field(..., example=False)
