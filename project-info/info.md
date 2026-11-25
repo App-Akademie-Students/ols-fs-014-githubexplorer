@@ -38,4 +38,6 @@
 [4]: https://docs.github.com/en/rest/issues/issues?utm_source=chatgpt.com "REST API endpoints for issues"
 
 ## Links
-### GitHub API
+### GitHub API Doku
+
+https://docs.github.com/de/rest?apiVersion=2026-03-10
