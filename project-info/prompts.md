@@ -14,3 +14,8 @@ korrigiere
 ## 2026-11-25 14:24:58 +01:00
 
 Ergänze die readme.md um wesentliche Informationen für Installation, Start, Stopp der Anwendung, Backend-Informationen, Pfade, Aufruf-URL und Swagger Aufruf.
+
+## 2026-11-26 12:14:52
+
+implementiere get_project_manifest_files
+siehe: Kommentar "Prompt:"

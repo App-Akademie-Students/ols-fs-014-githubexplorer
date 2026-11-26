@@ -30,3 +30,4 @@ async def preview_repository(request: RepositoryRequest) -> RepositoryPreviewRes
         raise HTTPException(status_code=502, detail="Could not reach GitHub.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+

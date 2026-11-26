@@ -20,6 +20,9 @@ Starte das Backend aus dem Projektstamm.
 
 ```powershell
 ./backend/.venv/Scripts/python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+
+mit .env von /backend
+uvicorn app.main:app --reload --env-file .env
 ```
 
 Lass das Terminal geöffnet, solange der Server läuft. Zum Stoppen drücke dort **Strg+C**.
