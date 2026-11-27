@@ -1,6 +1,7 @@
 import httpx
 from fastapi import APIRouter, HTTPException
 from app.schemas.github_schema import RepositoryPreviewResponse, RepositoryRequest
+from app.services.exceptions import DocumentationAnalysisError, RepositoryNotFoundError
 from app.services.github_service import parse_repo_url, get_repo_metadata
 
 router = APIRouter(
@@ -20,10 +21,37 @@ async def get_repository(request: RepositoryRequest):
 async def preview_repository(request: RepositoryRequest) -> RepositoryPreviewResponse:
     try:
         return await get_repo_metadata(request.url)
+    except DocumentationAnalysisError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except RepositoryNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Repository not found.") from exc
-        raise HTTPException(status_code=502, detail="Failed to fetch repository data from GitHub.") from exc
+        response = exc.response
+        status = response.status_code
+        if status == 429 or (
+            status == 403 and (
+                response.headers.get("X-RateLimit-Remaining") == "0"
+                or "Retry-After" in response.headers
+                or "rate limit" in response.text.lower()
+            )
+        ):
+            headers = {
+                name: response.headers[name]
+                for name in ("Retry-After", "X-RateLimit-Reset")
+                if name in response.headers
+            }
+            raise HTTPException(
+                status_code=429,
+                detail="Das GitHub-Anfragelimit ist erreicht. Versuche es später erneut.",
+                headers=headers,
+            ) from exc
+        if status == 401:
+            detail = "GitHub hat die Anmeldung abgelehnt. Prüfe GITHUB_TOKEN im Backend."
+        elif status == 403:
+            detail = "GitHub hat den Zugriff verweigert. Prüfe die Repository- und Token-Berechtigungen."
+        else:
+            detail = f"GitHub konnte die Repository-Daten nicht liefern (HTTP {status})."
+        raise HTTPException(status_code=502, detail=detail) from exc
     except httpx.TimeoutException as exc:
         raise HTTPException(status_code=504, detail="GitHub request timed out.") from exc
     except httpx.RequestError as exc:

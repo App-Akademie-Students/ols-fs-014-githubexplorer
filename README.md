@@ -6,26 +6,43 @@ Der GitHub Explorer analysiert öffentliche GitHub-Repositories anhand ihrer URL
 
 ## Installation
 
-Die Anleitung verwendet Python 3.14 und PowerShell. Führe die Befehle im Projektstamm aus, also im Ordner mit dieser README.
+Die Anleitung verwendet Python 3.14, Node.js 22.12 oder neuer mit npm und PowerShell. Führe die Befehle im Projektstamm aus.
 
 ```powershell
-python --version
 python -m venv backend/.venv
 ./backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
+npm.cmd --prefix frontend ci
 ```
+
+Lege die lokale Backend-Konfiguration an, falls noch keine `backend/.env` vorhanden ist.
+
+```powershell
+if (-not (Test-Path backend/.env)) {
+    Copy-Item backend/.env.example backend/.env
+}
+```
+
+Starte für die Dokumentationsanalyse Ollama und trage unter `OLLAMA_MODEL` den Namen eines dort installierten Modells ein. `OLLAMA_URL` gibt die Adresse des Ollama-Dienstes an. Mit einem optionalen `GITHUB_TOKEN` in `backend/.env` verwendet das Backend authentifizierte GitHub-Anfragen.
 
 ## Anwendung starten und stoppen
 
-Starte das Backend aus dem Projektstamm.
+Öffne zwei PowerShell-Terminals im Projektstamm.
+
+### Terminal 1 – Backend
 
 ```powershell
-./backend/.venv/Scripts/python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
-
-mit .env von /backend
-uvicorn app.main:app --reload --env-file .env
+./backend/.venv/Scripts/python.exe -m uvicorn app.main:app --app-dir backend --env-file backend/.env --host 127.0.0.1 --port 8000 --reload
 ```
 
-Lass das Terminal geöffnet, solange der Server läuft. Zum Stoppen drücke dort **Strg+C**.
+### Terminal 2 – Frontend
+
+```powershell
+npm.cmd --prefix frontend run dev
+```
+
+Öffne die von Vite angezeigte URL, normalerweise [http://localhost:5173/](http://localhost:5173/). Vite leitet Aufrufe unter `/api` an FastAPI auf Port 8000 weiter. Gib die URL eines öffentlichen GitHub-Repositorys ein und wähle **Repository analysieren**.
+
+Zum Stoppen drücke in beiden Terminals **Strg+C**.
 
 | Aufruf | Lokale URL |
 | --- | --- |
@@ -35,13 +52,13 @@ Lass das Terminal geöffnet, solange der Server läuft. Zum Stoppen drücke dort
 
 ## Backend und API
 
-Das Backend verwendet FastAPI mit Uvicorn. Pydantic definiert die Datenmodelle. HTTPX ruft für die Vorschau die GitHub-API auf und benötigt dafür Internetzugang. Das Frontend ist derzeit ein Platzhalter. Die API lässt sich über Swagger UI bedienen.
+Das Backend verwendet FastAPI mit Uvicorn. Pydantic definiert die Datenmodelle. HTTPX ruft für die Vorschau die GitHub-API auf und benötigt dafür Internetzugang. Die API lässt sich auch über Swagger UI bedienen.
 
 | Methode und Pfad | Funktion |
 | --- | --- |
 | `GET /` | Gibt die Statusmeldung `GitHub Explorer API` als JSON zurück. |
 | `POST /api/repositories/validate` | Prüft das URL-Format und gibt `owner` und `repo` zurück. |
-| `POST /api/repositories/preview` | Gibt `url`, `name`, `owner`, `language` und `readme` zurück. Fehlt die Hauptsprache oder README, ist das jeweilige Feld `null`. |
+| `POST /api/repositories/preview` | Liefert die Repository-Vorschau mit Metadaten, Sprachen, Projektdateien, Dokumentationsanalyse und Dateibaum. |
 
 Öffne in Swagger UI den Endpunkt `POST /api/repositories/preview` und klicke auf **Try it out**. Füge den folgenden Anfragebody ein und klicke auf **Execute**.
 
@@ -60,4 +77,4 @@ Das Backend verwendet FastAPI mit Uvicorn. Pydantic definiert die Datenmodelle. 
 | `backend/app/routers/github_router.py` | Routen für URL-Prüfung und Vorschau |
 | `backend/app/services/github_service.py` | URL-Prüfung und GitHub-Aufrufe |
 | `backend/app/schemas/github_schema.py` | Anfrage- und Antwortmodelle |
-| `frontend/` | Platzhalter für die Weboberfläche |
+| `frontend/` | Weboberfläche mit TypeScript und Vite |

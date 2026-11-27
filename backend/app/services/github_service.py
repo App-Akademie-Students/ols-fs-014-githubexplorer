@@ -1,11 +1,23 @@
 import asyncio
 import logging
+import os
 import re
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
-from app.schemas.github_schema import ProjectFile, ProjectFileScan, RepositoryPreviewResponse
-from app.services.exceptions import RepositoryNotFoundError
+from dotenv import dotenv_values
+
+from app.schemas.github_schema import (
+    DocumentationAnalysis,
+    ProjectFile,
+    ProjectFileScan,
+    RepositoryPreviewResponse,
+    RepositoryTree,
+    RepositoryTreeEntry,
+)
+from app.services.exceptions import DocumentationAnalysisError, RepositoryNotFoundError
+from app.services.llm_service import analyze_documentation, documentation_sources, is_markdown_path
 
 logger = logging.getLogger(__name__)
 ## constants ########################################
@@ -26,6 +38,14 @@ MANIFEST_NAMES=frozenset([
 
 MAX_MANIFEST_FILES = 12
 MAX_MANIFEST_BYTES = 256 * 1024
+MAX_DOCUMENTATION_FILES = 8
+
+F04_SYSTEM_PROMPT = (
+    "Leite aus den übergebenen Markdown-Auszügen den Projektzweck (summary) "
+    "und passende fachliche Themen (topics) ab. Beschreibe nur belegbare Aussagen "
+    "und kennzeichne geplante Funktionen als solche. Nenne unter evidence_paths "
+    "die verwendeten Belegdateien mit ihren exakten übergebenen Repository-Pfaden."
+)
 
 ## functions ########################################
 def parse_repo_url(url: str) -> dict[str, str]:
@@ -42,23 +62,30 @@ def parse_repo_url(url: str) -> dict[str, str]:
     return {"owner": owner, "repo": repo}
 
 
-async def get_project_manifest_files(
+async def _fetch_project_tree(
     client: httpx.AsyncClient, api_url: str, default_branch: str
-) -> ProjectFileScan:
-    """Lädt ausgewählte Projektdateien samt Repository-Pfad."""
-
+) -> dict | None:
     try:
         response = await client.get(
             f"{api_url}/git/trees/{quote(default_branch, safe='')}",
             params={"recursive": "1"},
         )
         response.raise_for_status()
-        tree = response.json()
+        return response.json()
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning("Der Repository-Dateibaum konnte nicht geladen werden: %s", exc)
+        return None
+
+async def get_project_manifest_files(
+    client: httpx.AsyncClient, api_url: str, default_branch: str, *, tree: dict | None = None
+) -> ProjectFileScan:
+    """Lädt ausgewählte Projektdateien samt Repository-Pfad."""
+    if tree is None:
+        tree = await _fetch_project_tree(client, api_url, default_branch)
+    if tree is None:
         return ProjectFileScan(files=[], incomplete=True)
 
-    manifests = sorted(
+    entries = sorted(
         (
             entry for entry in tree["tree"]
             if entry["type"] == "blob"
@@ -67,12 +94,45 @@ async def get_project_manifest_files(
         ),
         key=lambda entry: entry["path"],
     )
-    eligible = [entry for entry in manifests if entry["size"] <= MAX_MANIFEST_BYTES]
-    incomplete = tree["truncated"] or len(eligible) != len(manifests)
-    incomplete = incomplete or len(eligible) > MAX_MANIFEST_FILES
+    return await _load_project_files(
+        client, api_url, default_branch, tree, entries, MAX_MANIFEST_FILES
+    )
+
+
+async def _scan_documentation(
+    client: httpx.AsyncClient, api_url: str, default_branch: str, tree: dict
+) -> ProjectFileScan:
+    entries = sorted(
+        (
+            entry for entry in tree["tree"]
+            if entry["type"] == "blob"
+            and entry.get("mode") != "120000"
+            and is_markdown_path(entry["path"])
+        ),
+        key=lambda entry: (
+            not entry["path"].lower().rsplit("/", 1)[-1].startswith("readme."),
+            entry["path"].count("/"),
+            entry["path"],
+        ),
+    )
+    return await _load_project_files(
+        client, api_url, default_branch, tree, entries, MAX_DOCUMENTATION_FILES
+    )
+
+
+async def _load_project_files(
+    client: httpx.AsyncClient,
+    api_url: str,
+    default_branch: str,
+    tree: dict,
+    entries: list[dict],
+    limit: int,
+) -> ProjectFileScan:
+    eligible = [entry for entry in entries if entry["size"] <= MAX_MANIFEST_BYTES]
+    incomplete = tree["truncated"] or len(eligible) != len(entries) or len(eligible) > limit
 
     files = []
-    for entry in eligible[:MAX_MANIFEST_FILES]:
+    for entry in eligible[:limit]:
         path = entry["path"]
         try:
             async with client.stream(
@@ -91,7 +151,7 @@ async def get_project_manifest_files(
                 else:
                     files.append(ProjectFile(path=path, content=content.decode("utf-8-sig")))
         except (httpx.HTTPError, UnicodeDecodeError) as exc:
-            logger.warning("Manifest-Datei %s konnte nicht geladen werden: %s", path, exc)
+            logger.warning("Projektdatei %s konnte nicht geladen werden: %s", path, exc)
             incomplete = True
 
     return ProjectFileScan(files=files, incomplete=incomplete)
@@ -129,7 +189,14 @@ async def get_repo_metadata(url: str) -> RepositoryPreviewResponse:
     owner = repository["owner"]
     repo = repository["repo"]
     api_url = f"{GITHUB_API}/repos/{owner}/{repo}" # GitHub API URL for the repository
-    async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=10.0) as client: #FIXME GitHub Token .env einfügen
+    token = os.getenv("GITHUB_TOKEN")
+    if token is None:
+        token = dotenv_values(Path(__file__).resolve().parents[2] / ".env").get("GITHUB_TOKEN")
+    headers = DEFAULT_HEADERS.copy()
+    if token and token.strip():
+        headers["Authorization"] = f"Bearer {token.strip()}"
+
+    async with httpx.AsyncClient(headers=headers, timeout=10.0) as client:
         # Repo, Sprachen und README parallel abrufen
         response, languages, readme = await asyncio.gather(
             client.get(api_url),
@@ -144,8 +211,34 @@ async def get_repo_metadata(url: str) -> RepositoryPreviewResponse:
 
         response.raise_for_status()
         json_data = response.json()
-        project_files = await get_project_manifest_files(
-            client, api_url, json_data["default_branch"]
+        default_branch = json_data["default_branch"]
+        tree = await _fetch_project_tree(client, api_url, default_branch)
+        if tree is None:
+            project_files = documentation_scan = ProjectFileScan(files=[], incomplete=True)
+        else:
+            project_files, documentation_scan = await asyncio.gather(
+                get_project_manifest_files(client, api_url, default_branch, tree=tree),
+                _scan_documentation(client, api_url, default_branch, tree),
+            )
+
+    documentation = await analyze_documentation(
+        documentation_scan, DocumentationAnalysis, F04_SYSTEM_PROMPT
+    )
+    if documentation is not None:
+        sources = documentation_sources(documentation_scan)
+        if any(path not in sources for path in documentation.evidence_paths):
+            raise DocumentationAnalysisError(
+                "Die Analyse verweist auf eine Datei, die nicht als Quelle übergeben wurde."
+            )
+
+    repository_tree = None
+    if tree is not None:
+        repository_tree = RepositoryTree(
+            entries=[
+                RepositoryTreeEntry(path=entry["path"], type=entry["type"])
+                for entry in tree["tree"]
+            ],
+            truncated=tree["truncated"],
         )
 
     return RepositoryPreviewResponse(
@@ -156,4 +249,6 @@ async def get_repo_metadata(url: str) -> RepositoryPreviewResponse:
         languages=languages,
         readme=readme,
         project_files=project_files,
+        documentation=documentation,
+        repository_tree=repository_tree,
     )

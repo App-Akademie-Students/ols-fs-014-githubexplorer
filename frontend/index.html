@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitHub Repository Analyzer</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>GitHub Repository Analyzer</h1>
+        <p>Analysiere ein öffentliches Repository anhand seiner GitHub-URL.</p>
+      </header>
+      <form aria-labelledby="url-label">
+        <label id="url-label" for="url">GitHub-Repository-URL</label>
+        <div class="form-row">
+          <input id="url" name="url" type="url" placeholder="https://github.com/owner/repository" required />
+          <button>Repository analysieren</button>
+        </div>
+      </form>
+      <p id="status" role="status"></p>
+      <p id="error" role="alert" hidden></p>
+      <div id="result" aria-busy="false"></div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

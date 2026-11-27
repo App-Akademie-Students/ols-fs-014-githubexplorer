@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 class RepositoryRequest(BaseModel):
@@ -14,6 +16,22 @@ class ProjectFileScan(BaseModel):
     incomplete: bool = Field(..., example=False)
 
 
+class DocumentationAnalysis(BaseModel):
+    summary: str = Field(..., example="Analysis of the project's documentation")
+    topics: list[str] = Field(..., example=["installation", "usage", "contributing"])
+    evidence_paths: list[str]
+
+
+class RepositoryTreeEntry(BaseModel):
+    path: str
+    type: Literal["blob", "tree", "commit"]
+
+
+class RepositoryTree(BaseModel):
+    entries: list[RepositoryTreeEntry]
+    truncated: bool
+
+
 class RepositoryPreviewResponse(RepositoryRequest):
     owner: str
     repo: str
@@ -21,6 +39,5 @@ class RepositoryPreviewResponse(RepositoryRequest):
     languages: dict[str, int]
     readme: str | None
     project_files: ProjectFileScan
-class DocumentationAnalysis(BaseModel):
-    summary: str = Field(..., example="Analysis of the project's documentation")
-    topics: list[str] = Field(..., example=["installation", "usage", "contributing"])
+    documentation: DocumentationAnalysis | None = None
+    repository_tree: RepositoryTree | None = None

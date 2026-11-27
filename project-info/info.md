@@ -47,4 +47,6 @@ https://docs.github.com/de/rest?apiVersion=2026-03-10
 * github_service zu Klasse
 * Pipeline-Pattern (Pipeline Pattern zerlegt eine Verarbeitung in aufeinanderfolgende Schritte,
   die Daten nacheinander   verarbeiten oder um weitere Ergebnisse ergänzen.)
+* Rest-API (github_router) - Parameter für unterschiedliche Ergebnisse
+* Logging
   
