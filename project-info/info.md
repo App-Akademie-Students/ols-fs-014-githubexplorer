@@ -41,3 +41,10 @@
 ### GitHub API Doku
 
 https://docs.github.com/de/rest?apiVersion=2026-03-10
+
+
+## Idea for Improvement
+* github_service zu Klasse
+* Pipeline-Pattern (Pipeline Pattern zerlegt eine Verarbeitung in aufeinanderfolgende Schritte,
+  die Daten nacheinander   verarbeiten oder um weitere Ergebnisse ergänzen.)
+  
